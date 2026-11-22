@@ -10,8 +10,7 @@ import { IVotingStrategy } from "../interfaces/IVotingStrategy.sol";
 /// @notice This module allows a proposal to be validated based on the proposition power of an author exceeding
 ///         a threshold over a set of voting strategies, at a recent block chosen by the author.
 /// @dev The voting strategies used here are configured independently of the strategies set in the Space.
-///      The block is chosen by the author, rather than being the current block, so that strategies whose voting power
-///      is signed offchain for a given block can be used.
+///      The author chooses the block so that strategies whose voting power is signed offchain can be used.
 abstract contract PropositionPower {
     using SXUtils for IndexedStrategy[];
 
