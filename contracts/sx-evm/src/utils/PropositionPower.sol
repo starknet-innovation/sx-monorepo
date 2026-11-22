@@ -8,22 +8,33 @@ import { IVotingStrategy } from "../interfaces/IVotingStrategy.sol";
 
 /// @title Proposition Power Proposal Validation Strategy Module
 /// @notice This module allows a proposal to be validated based on the proposition power of an author exceeding
-///         a threshold over a set of voting strategies.
+///         a threshold over a set of voting strategies, at a recent block chosen by the author.
 /// @dev The voting strategies used here are configured independently of the strategies set in the Space.
+///      The block is chosen by the author, rather than being the current block, so that strategies whose voting power
+///      is signed offchain for a given block can be used.
 abstract contract PropositionPower {
     using SXUtils for IndexedStrategy[];
 
     /// @notice Thrown when an invalid strategy index is supplied.
     error InvalidStrategyIndex(uint256 index);
 
-    /// @dev Validates an author based on the voting power of the author exceeding a threshold over a set of strategies.
+    /// @notice Thrown when the block number is in the future or older than the maximum block age.
+    error InvalidBlockNumber(uint32 blockNumber);
+
+    /// @dev Validates an author based on the voting power of the author at `blockNumber` exceeding a threshold over a
+    ///      set of strategies. `blockNumber` must not be in the future nor older than `maxBlockAge` blocks.
     function _validate(
         address author,
         uint256 proposalThreshold,
         Strategy[] memory allowedStrategies,
+        uint32 maxBlockAge,
+        uint32 blockNumber,
         IndexedStrategy[] memory userStrategies
     ) internal view returns (bool) {
-        uint256 votingPower = _getCumulativePower(author, uint32(block.number), userStrategies, allowedStrategies);
+        if (blockNumber > block.number || block.number - blockNumber > maxBlockAge) {
+            revert InvalidBlockNumber(blockNumber);
+        }
+        uint256 votingPower = _getCumulativePower(author, blockNumber, userStrategies, allowedStrategies);
         return (votingPower >= proposalThreshold);
     }
 

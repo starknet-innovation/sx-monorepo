@@ -22,19 +22,23 @@ DAOs are free to write their own custom strategies that suit their own needs how
 
 A strategy that validates an `author` to create a proposal if their `propositionPower` calculated from a set of Voting strategies exceeds a `proposalThreshold` value. It means that if the proposal threshold is set to `5`, the author needs to have at least `5` Proposition power to create a proposal. This strategy uses the same logic as [Voting strategies](/snapshot-x/protocol/voting-strategies), so refer to that section for more information.
 
+The proposition power is computed at a recent block chosen by the `author`, at most `maxBlockAge` blocks old, rather than at the block the proposal is created in. This lets strategies whose power is signed offchain for a given block be used.
+
 When calling this strategy, `params` should be:
 
 ```solidity
 uint256 proposalThreshold = ...
 Strategy[] allowedStrategies ...
-params = abi.encode(proposalThreshold, allowedStrategies);
+uint32 maxBlockAge = ... // In blocks
+params = abi.encode(proposalThreshold, allowedStrategies, maxBlockAge);
 ```
 
-`userParams` should contain the indexed strategies that the `author` has power with:
+`userParams` should contain the block the proposition power is computed at, which can't be in the future or older than `maxBlockAge` blocks, and the indexed strategies that the `author` has power with:
 
 ```solidity
+uint32 blockNumber = ...
 IndexedStrategy[] userStrategies = ...
-userParams = abi.encode(userStrategies);
+userParams = abi.encode(blockNumber, userStrategies);
 ```
 
 ### Active proposal limiter 
@@ -56,7 +60,8 @@ uint256 cooldown = ... // In seconds
 uint256 maxActiveProposals = ... // Cannot be 0
 uint256 proposalThreshold = ...
 Strategy[] allowedStrategies ...
-params = abi.encode(cooldown, maxActiveProposals, proposalThreshold, allowedStrategies);
+uint32 maxBlockAge = ... // In blocks
+params = abi.encode(cooldown, maxActiveProposals, proposalThreshold, allowedStrategies, maxBlockAge);
 ```
 
 `userParams` is the same as for the Proposition power strategy.

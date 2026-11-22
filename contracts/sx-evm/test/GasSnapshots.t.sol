@@ -133,6 +133,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
         // Set the proposal validation strategy to Comp token proposition power.
         validationStrategy = new PropositionPowerAndActiveProposalsLimiterValidationStrategy();
         // Using the current active strategies in the space as the allowed strategies for proposal.
+        // Params: cooldown, max active proposals, proposal threshold, allowed strategies, max block age.
         space.updateSettings(
             UpdateSettingsCalldata(
                 NO_UPDATE_UINT32,
@@ -140,7 +141,10 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
                 NO_UPDATE_UINT32,
                 NO_UPDATE_STRING,
                 NO_UPDATE_STRING,
-                Strategy(address(validationStrategy), abi.encode(TOKEN_AMOUNT, currentVotingStrategies)),
+                Strategy(
+                    address(validationStrategy),
+                    abi.encode(1 weeks, 5, TOKEN_AMOUNT, currentVotingStrategies, uint32(256))
+                ),
                 "",
                 NO_UPDATE_ADDRESSES,
                 NO_UPDATE_ADDRESSES,
@@ -153,6 +157,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
 
     function testVoteAndProposeWithCompToken() public {
         vm.roll(vm.getBlockNumber() + 1);
+        bytes memory userProposalValidationParams = abi.encode(uint32(vm.getBlockNumber()), userVotingStrategies);
 
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(
             AUTHOR_KEY,
@@ -162,7 +167,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
                 address(author),
                 proposalMetadataURI,
                 executionStrategy,
-                abi.encode(userVotingStrategies),
+                userProposalValidationParams,
                 0
             )
         );
@@ -174,7 +179,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
             0,
             address(space),
             PROPOSE_SELECTOR,
-            abi.encode(author, proposalMetadataURI, executionStrategy, abi.encode(userVotingStrategies))
+            abi.encode(author, proposalMetadataURI, executionStrategy, userProposalValidationParams)
         );
 
         (v, r, s) = vm.sign(
@@ -185,7 +190,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
                 address(author),
                 proposalMetadataURI,
                 executionStrategy,
-                abi.encode(userVotingStrategies),
+                userProposalValidationParams,
                 1
             )
         );
@@ -199,7 +204,7 @@ contract GasSnapshotsTest is SpaceTest, SigUtils {
             1,
             address(space),
             PROPOSE_SELECTOR,
-            abi.encode(author, proposalMetadataURI, executionStrategy, abi.encode(userVotingStrategies))
+            abi.encode(author, proposalMetadataURI, executionStrategy, userProposalValidationParams)
         );
         vm.stopSnapshotGas();
 

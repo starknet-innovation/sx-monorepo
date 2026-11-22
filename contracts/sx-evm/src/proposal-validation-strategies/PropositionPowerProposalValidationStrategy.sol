@@ -16,15 +16,24 @@ contract PropositionPowerProposalValidationStrategy is PropositionPower, IPropos
     /// @param params ABI encoded array that should contain the following:
     ///                 proposalThreshold: Minimum proposition power required to create a proposal.
     ///                 allowedStrategies: Array of allowed voting strategies.
-    /// @param userParams ABI encoded array that should contain the user voting strategies.
+    ///                 maxBlockAge: Maximum number of blocks between the block chosen by the author and the current block.
+    /// @param userParams ABI encoded array that should contain the following:
+    ///                 blockNumber: Block at which the proposition power is computed.
+    ///                 userStrategies: Array of user voting strategies.
     function validate(
         address author,
         bytes calldata params,
         bytes calldata userParams
     ) external view override returns (bool) {
-        (uint256 proposalThreshold, Strategy[] memory allowedStrategies) = abi.decode(params, (uint256, Strategy[]));
-        IndexedStrategy[] memory userStrategies = abi.decode(userParams, (IndexedStrategy[]));
+        (uint256 proposalThreshold, Strategy[] memory allowedStrategies, uint32 maxBlockAge) = abi.decode(
+            params,
+            (uint256, Strategy[], uint32)
+        );
+        (uint32 blockNumber, IndexedStrategy[] memory userStrategies) = abi.decode(
+            userParams,
+            (uint32, IndexedStrategy[])
+        );
 
-        return _validate(author, proposalThreshold, allowedStrategies, userStrategies);
+        return _validate(author, proposalThreshold, allowedStrategies, maxBlockAge, blockNumber, userStrategies);
     }
 }

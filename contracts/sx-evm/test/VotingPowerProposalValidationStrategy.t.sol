@@ -10,8 +10,10 @@ import { CompToken } from "./mocks/CompToken.sol";
 
 contract PropositionPowerProposalValidationTest is SpaceTest {
     error DuplicateFound(uint8 index);
+    error InvalidBlockNumber(uint32 blockNumber);
 
     uint256 internal proposalThreshold = 100;
+    uint32 internal maxBlockAge = 256;
     CompToken internal compToken;
     IndexedStrategy[] internal userPropositionPowerStrategies;
 
@@ -30,11 +32,13 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
         );
         Strategy[] memory propositionPowerStrategies = new Strategy[](1);
         propositionPowerStrategies[0] = compVotingStrategy;
+        _setPropositionPowerStrategies(proposalThreshold, propositionPowerStrategies);
 
-        Strategy memory propositionPowerProposalValidationStrategy = Strategy(
-            address(new PropositionPowerProposalValidationStrategy()),
-            abi.encode(proposalThreshold, propositionPowerStrategies)
-        );
+        // The Comp token strategy is at index 0 of the proposal validation strategies
+        userPropositionPowerStrategies.push(IndexedStrategy(0, new bytes(0)));
+    }
+
+    function _setPropositionPowerStrategies(uint256 threshold, Strategy[] memory strategies) internal {
         space.updateSettings(
             UpdateSettingsCalldata(
                 NO_UPDATE_UINT32,
@@ -42,7 +46,10 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
                 NO_UPDATE_UINT32,
                 NO_UPDATE_STRING,
                 NO_UPDATE_STRING,
-                propositionPowerProposalValidationStrategy,
+                Strategy(
+                    address(new PropositionPowerProposalValidationStrategy()),
+                    abi.encode(threshold, strategies, maxBlockAge)
+                ),
                 "",
                 NO_UPDATE_ADDRESSES,
                 NO_UPDATE_ADDRESSES,
@@ -51,13 +58,19 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
                 NO_UPDATE_UINT8S
             )
         );
+    }
 
-        // The Comp token strategy is at index 0 of the proposal validation strategies
-        userPropositionPowerStrategies.push(IndexedStrategy(0, new bytes(0)));
+    function _propose(uint256 blockNumber) internal {
+        _createProposal(
+            author,
+            proposalMetadataURI,
+            executionStrategy,
+            abi.encode(uint32(blockNumber), userPropositionPowerStrategies)
+        );
     }
 
     function testPropose() public {
-        _createProposal(author, proposalMetadataURI, executionStrategy, abi.encode(userPropositionPowerStrategies));
+        _propose(vm.getBlockNumber());
     }
 
     function testProposeInsufficientVotingPower() public {
@@ -65,72 +78,76 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
         compToken.burn(author, 1); // Voting power of the author is now 99 when the proposal threshold is 100
         vm.roll(vm.getBlockNumber() + 1);
         vm.expectRevert(FailedToPassProposalValidation.selector);
-        _createProposal(author, proposalMetadataURI, executionStrategy, abi.encode(userPropositionPowerStrategies));
+        _propose(vm.getBlockNumber());
+    }
+
+    function testProposeAtRecentBlock() public {
+        uint256 recentBlock = vm.getBlockNumber();
+        vm.prank(author);
+        compToken.burn(author, 100);
+        vm.roll(vm.getBlockNumber() + 10);
+
+        // The author had enough voting power at the recent block, not at the current one
+        _propose(recentBlock);
+        vm.expectRevert(FailedToPassProposalValidation.selector);
+        _propose(vm.getBlockNumber());
+    }
+
+    function testProposeAtMaxBlockAge() public {
+        vm.roll(vm.getBlockNumber() + maxBlockAge);
+        _propose(vm.getBlockNumber() - maxBlockAge);
+    }
+
+    function testProposeBlockTooOld() public {
+        vm.roll(vm.getBlockNumber() + maxBlockAge + 1);
+        uint32 blockNumber = uint32(vm.getBlockNumber() - maxBlockAge - 1);
+        vm.expectRevert(abi.encodeWithSelector(InvalidBlockNumber.selector, blockNumber));
+        _propose(blockNumber);
+    }
+
+    function testProposeFutureBlock() public {
+        uint32 blockNumber = uint32(vm.getBlockNumber() + 1);
+        vm.expectRevert(abi.encodeWithSelector(InvalidBlockNumber.selector, blockNumber));
+        _propose(blockNumber);
+    }
+
+    function testFuzzProposeBlockNumber(uint256 blockNumber) public {
+        vm.roll(vm.getBlockNumber() + 2 * maxBlockAge);
+        uint256 currentBlock = vm.getBlockNumber();
+        blockNumber = bound(blockNumber, currentBlock - 2 * maxBlockAge, currentBlock + maxBlockAge);
+
+        if (blockNumber > currentBlock || currentBlock - blockNumber > maxBlockAge) {
+            vm.expectRevert(abi.encodeWithSelector(InvalidBlockNumber.selector, uint32(blockNumber)));
+        }
+        _propose(blockNumber);
     }
 
     function testProposeInvalidUserVotingStrategy() public {
-        IndexedStrategy[] memory invalidUserPropositionPowerStrategies = new IndexedStrategy[](1);
-        invalidUserPropositionPowerStrategies[0] = IndexedStrategy(42, new bytes(0));
+        userPropositionPowerStrategies[0] = IndexedStrategy(42, new bytes(0));
 
         // out of bounds revert
         vm.expectRevert();
-        _createProposal(
-            author,
-            proposalMetadataURI,
-            executionStrategy,
-            abi.encode(invalidUserPropositionPowerStrategies)
-        );
+        _propose(vm.getBlockNumber());
     }
 
     function testProposeDuplicateUserVotingStrategy() public {
-        IndexedStrategy[] memory invalidUserPropositionPowerStrategies = new IndexedStrategy[](4);
-        invalidUserPropositionPowerStrategies[0] = IndexedStrategy(0, new bytes(0));
-        invalidUserPropositionPowerStrategies[1] = IndexedStrategy(1, new bytes(0));
-        invalidUserPropositionPowerStrategies[2] = IndexedStrategy(2, new bytes(0));
-        invalidUserPropositionPowerStrategies[3] = IndexedStrategy(0, new bytes(0)); // Duplicate index
+        userPropositionPowerStrategies.push(IndexedStrategy(1, new bytes(0)));
+        userPropositionPowerStrategies.push(IndexedStrategy(2, new bytes(0)));
+        userPropositionPowerStrategies.push(IndexedStrategy(0, new bytes(0))); // Duplicate index
 
         vm.expectRevert(abi.encodeWithSelector(DuplicateFound.selector, 0));
-        _createProposal(
-            author,
-            proposalMetadataURI,
-            executionStrategy,
-            abi.encode(invalidUserPropositionPowerStrategies)
-        );
+        _propose(vm.getBlockNumber());
     }
 
     function testProposeMultipleVotingStrategies() public {
-        // Using 2 vanilla strategies for proposition power
+        // Using 2 vanilla strategies for proposition power, with a proposal threshold of 2
         VanillaVotingStrategy additionalStrategy = new VanillaVotingStrategy();
         Strategy[] memory propositionPowerStrategies = new Strategy[](2);
         propositionPowerStrategies[0] = Strategy(address(additionalStrategy), new bytes(0));
         propositionPowerStrategies[1] = Strategy(address(additionalStrategy), new bytes(0));
+        _setPropositionPowerStrategies(2, propositionPowerStrategies);
 
-        // Using a proposal threshold of 2
-        Strategy memory propositionPowerProposalValidationStrategy = Strategy(
-            address(new PropositionPowerProposalValidationStrategy()),
-            abi.encode(2, propositionPowerStrategies)
-        );
-        space.updateSettings(
-            UpdateSettingsCalldata(
-                NO_UPDATE_UINT32,
-                NO_UPDATE_UINT32,
-                NO_UPDATE_UINT32,
-                NO_UPDATE_STRING,
-                NO_UPDATE_STRING,
-                propositionPowerProposalValidationStrategy,
-                "",
-                NO_UPDATE_ADDRESSES,
-                NO_UPDATE_ADDRESSES,
-                NO_UPDATE_STRATEGIES,
-                NO_UPDATE_STRINGS,
-                NO_UPDATE_UINT8S
-            )
-        );
-
-        IndexedStrategy[] memory newUserPropositionPowerStrategies = new IndexedStrategy[](2);
-        newUserPropositionPowerStrategies[0] = IndexedStrategy(0, new bytes(0));
-        newUserPropositionPowerStrategies[1] = IndexedStrategy(1, new bytes(0));
-
-        _createProposal(author, proposalMetadataURI, executionStrategy, abi.encode(newUserPropositionPowerStrategies));
+        userPropositionPowerStrategies.push(IndexedStrategy(1, new bytes(0)));
+        _propose(vm.getBlockNumber());
     }
 }
