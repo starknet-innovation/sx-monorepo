@@ -6,6 +6,7 @@ import { Strategy, IndexedStrategy, UpdateSettingsCalldata } from "../src/types.
 import { CompVotingStrategy } from "../src/voting-strategies/CompVotingStrategy.sol";
 import { VanillaVotingStrategy } from "../src/voting-strategies/VanillaVotingStrategy.sol";
 import { PropositionPowerAndActiveProposalsLimiterValidationStrategy } from "../src/proposal-validation-strategies/PropositionPowerAndActiveProposalsLimiterValidationStrategy.sol";
+import { IProposalValidationStrategy } from "../src/interfaces/IProposalValidationStrategy.sol";
 import { CompToken } from "./mocks/CompToken.sol";
 
 contract PropositionPowerProposalValidationTest is SpaceTest {
@@ -169,6 +170,53 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
         _setPropositionPowerStrategies(2, propositionPowerStrategies);
 
         userPropositionPowerStrategies.push(IndexedStrategy(1, new bytes(0)));
+        _propose(vm.getBlockNumber());
+    }
+
+    function testProposeIgnoresTokensReceivedInTheChosenBlock() public {
+        // Tokens borrowed or bought in the chosen block don't count, as strategies read the block before it
+        address borrower = address(0xbeef);
+        compToken.mint(borrower, proposalThreshold);
+        vm.prank(borrower);
+        compToken.delegate(borrower);
+
+        vm.expectRevert(FailedToPassProposalValidation.selector);
+        _createProposal(
+            borrower,
+            proposalMetadataURI,
+            executionStrategy,
+            abi.encode(uint32(vm.getBlockNumber()), userPropositionPowerStrategies)
+        );
+    }
+
+    function testProposeBlockNumberAboveUint32() public {
+        // A block number that would wrap into the window once truncated to uint32 is rejected when decoding
+        uint256 wrappingBlockNumber = uint256(type(uint32).max) + 1 + vm.getBlockNumber();
+        vm.expectRevert();
+        _createProposal(
+            author,
+            proposalMetadataURI,
+            executionStrategy,
+            abi.encode(wrappingBlockNumber, userPropositionPowerStrategies)
+        );
+    }
+
+    function testProposeLegacyUserParams() public {
+        // Clients still sending only the strategies are rejected, at a realistic block height
+        vm.roll(1_000_000);
+        vm.expectRevert();
+        _createProposal(author, proposalMetadataURI, executionStrategy, abi.encode(userPropositionPowerStrategies));
+    }
+
+    function testValidateCalledDirectlyDoesNotUseAuthorQuota() public {
+        cooldown = 1 days;
+        _setCompStrategy();
+        (address validation, bytes memory params) = space.proposalValidationStrategy();
+        bytes memory userParams = abi.encode(uint32(vm.getBlockNumber()), userPropositionPowerStrategies);
+
+        // Anyone can call the strategy, but the limit is counted per caller, not for the space
+        assertTrue(IProposalValidationStrategy(validation).validate(author, params, userParams));
+        assertFalse(IProposalValidationStrategy(validation).validate(author, params, userParams));
         _propose(vm.getBlockNumber());
     }
 }
