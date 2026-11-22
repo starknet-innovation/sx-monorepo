@@ -35,8 +35,7 @@ src
 │  ├─ ...
 ├─ proposal-validation-strategies
 │  ├─ ActiveProposalsLimiterProposalValidationStrategy.sol - "Strategy to that validates with the ActiveProposalsLimiter module"
-│  ├─ PropositionPowerAndActiveProposalsLimiterProposalValidationStrategy.sol - "Strategy that validates with the ActiveProposalsLimiter and PropositionPower modules"
-│  └─ PropositionPowerProposalValidationStrategy.sol - "Strategy that validates with the PropositionPower module"
+│  └─ PropositionPowerAndActiveProposalsLimiterValidationStrategy.sol - "Strategy that validates with the ActiveProposalsLimiter and PropositionPower modules"
 ├─ utils
 │  ├─ ActiveProposalsLimiter.sol - "Module to limit the number of active proposals per author"
 │  ├─ BitPacker.sol - "Uint256 Bit Setting and Checking Library"

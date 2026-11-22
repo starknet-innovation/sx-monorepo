@@ -26,7 +26,6 @@ import { WhitelistVotingStrategy } from "../src/voting-strategies/WhitelistVotin
 import { MerkleWhitelistVotingStrategy } from "../src/voting-strategies/MerkleWhitelistVotingStrategy.sol";
 
 import { VanillaProposalValidationStrategy } from "../src/proposal-validation-strategies/VanillaProposalValidationStrategy.sol";
-import { PropositionPowerProposalValidationStrategy } from "../src/proposal-validation-strategies/PropositionPowerProposalValidationStrategy.sol";
 import { ActiveProposalsLimiterProposalValidationStrategy } from "../src/proposal-validation-strategies/ActiveProposalsLimiterProposalValidationStrategy.sol";
 import { PropositionPowerAndActiveProposalsLimiterValidationStrategy } from "../src/proposal-validation-strategies/PropositionPowerAndActiveProposalsLimiterValidationStrategy.sol";
 
@@ -156,12 +155,6 @@ contract Deployer is Script {
             saltNonce
         );
         deployments.serialize("VanillaProposalValidationStrategy", vanillaProposalValidationStrategy);
-
-        (address propositionPowerProposalValidationStrategy, ) = noRedeploy(
-            type(PropositionPowerProposalValidationStrategy).creationCode,
-            saltNonce
-        );
-        deployments.serialize("PropositionPowerProposalValidationStrategy", propositionPowerProposalValidationStrategy);
 
         (address activeProposalsLimiterProposalValidationStrategy, ) = noRedeploy(
             type(ActiveProposalsLimiterProposalValidationStrategy).creationCode,

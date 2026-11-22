@@ -18,29 +18,6 @@ There is no requirement to use either of these parameter arrays in your strategy
 
 DAOs are free to write their own custom strategies that suit their own needs however we provide the following approaches:
 
-### Proposition power
-
-A strategy that validates an `author` to create a proposal if their `propositionPower` calculated from a set of Voting strategies exceeds a `proposalThreshold` value. It means that if the proposal threshold is set to `5`, the author needs to have at least `5` Proposition power to create a proposal. This strategy uses the same logic as [Voting strategies](/snapshot-x/protocol/voting-strategies), so refer to that section for more information.
-
-The proposition power is computed at a recent block chosen by the `author`, at most `maxBlockAge` blocks old, rather than at the block the proposal is created in. This lets strategies whose power is signed offchain for a given block be used.
-
-When calling this strategy, `params` should be:
-
-```solidity
-uint256 proposalThreshold = ...
-Strategy[] allowedStrategies ...
-uint32 maxBlockAge = ... // In blocks
-params = abi.encode(proposalThreshold, allowedStrategies, maxBlockAge);
-```
-
-`userParams` should contain the block the proposition power is computed at, which can't be in the future or older than `maxBlockAge` blocks, and the indexed strategies that the `author` has power with:
-
-```solidity
-uint32 blockNumber = ...
-IndexedStrategy[] userStrategies = ...
-userParams = abi.encode(blockNumber, userStrategies);
-```
-
 ### Active proposal limiter 
 
 A strategy that validates an `author` to create a proposal if the `author` has not exceeded a limit of `maxActiveProposals`.
@@ -51,12 +28,14 @@ Using this strategy can help to prevent proposal creation spam in your space.
 
 ### Proposition power with active proposal limiter
 
-A strategy that combines the two strategies above. An `author` can create a proposal only if their `propositionPower` is at least the `proposalThreshold` and they have not reached the limit of `maxActiveProposals` within the `cooldown` period. It is available in the Snapshot interface as "Voting power with cooldown".
+A strategy that validates an `author` to create a proposal if their `propositionPower` calculated from a set of Voting strategies is at least a `proposalThreshold` value, and they have not reached the limit of `maxActiveProposals` within the `cooldown` period, as in the active proposal limiter above. If the proposal threshold is set to `5`, the author needs to have at least `5` Proposition power to create a proposal. A `cooldown` of `0` disables the active proposals limit. This strategy uses the same logic as [Voting strategies](/snapshot-x/protocol/voting-strategies), so refer to that section for more information. It is available in the Snapshot interface as "Voting power with cooldown".
+
+The proposition power is computed at a recent block chosen by the `author`, at most `maxBlockAge` blocks old, rather than at the block the proposal is created in. This lets strategies whose power is signed offchain for a given block be used.
 
 When calling this strategy, `params` should be:
 
 ```solidity
-uint256 cooldown = ... // In seconds
+uint256 cooldown = ... // In seconds, 0 disables the limit
 uint256 maxActiveProposals = ... // Cannot be 0
 uint256 proposalThreshold = ...
 Strategy[] allowedStrategies ...
@@ -64,7 +43,13 @@ uint32 maxBlockAge = ... // In blocks
 params = abi.encode(cooldown, maxActiveProposals, proposalThreshold, allowedStrategies, maxBlockAge);
 ```
 
-`userParams` is the same as for the Proposition power strategy.
+`userParams` should contain the block the proposition power is computed at, which can't be in the future or older than `maxBlockAge` blocks, and the indexed strategies that the `author` has power with:
+
+```solidity
+uint32 blockNumber = ...
+IndexedStrategy[] userStrategies = ...
+userParams = abi.encode(blockNumber, userStrategies);
+```
 
 ### And more!
 

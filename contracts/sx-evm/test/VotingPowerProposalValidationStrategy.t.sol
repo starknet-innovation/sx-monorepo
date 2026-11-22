@@ -5,7 +5,7 @@ import { SpaceTest } from "./utils/Space.t.sol";
 import { Strategy, IndexedStrategy, UpdateSettingsCalldata } from "../src/types.sol";
 import { CompVotingStrategy } from "../src/voting-strategies/CompVotingStrategy.sol";
 import { VanillaVotingStrategy } from "../src/voting-strategies/VanillaVotingStrategy.sol";
-import { PropositionPowerProposalValidationStrategy } from "../src/proposal-validation-strategies/PropositionPowerProposalValidationStrategy.sol";
+import { PropositionPowerAndActiveProposalsLimiterValidationStrategy } from "../src/proposal-validation-strategies/PropositionPowerAndActiveProposalsLimiterValidationStrategy.sol";
 import { CompToken } from "./mocks/CompToken.sol";
 
 contract PropositionPowerProposalValidationTest is SpaceTest {
@@ -14,7 +14,10 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
 
     uint256 internal proposalThreshold = 100;
     uint32 internal maxBlockAge = 256;
+    uint256 internal cooldown; // 0 disables the active proposals limit
+    uint256 internal maxActiveProposals = 1;
     CompToken internal compToken;
+    Strategy internal compVotingStrategy;
     IndexedStrategy[] internal userPropositionPowerStrategies;
 
     function setUp() public virtual override {
@@ -26,13 +29,8 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
         compToken.delegate(author);
         vm.roll(vm.getBlockNumber() + 1);
 
-        Strategy memory compVotingStrategy = Strategy(
-            address(new CompVotingStrategy()),
-            abi.encodePacked(address(compToken))
-        );
-        Strategy[] memory propositionPowerStrategies = new Strategy[](1);
-        propositionPowerStrategies[0] = compVotingStrategy;
-        _setPropositionPowerStrategies(proposalThreshold, propositionPowerStrategies);
+        compVotingStrategy = Strategy(address(new CompVotingStrategy()), abi.encodePacked(address(compToken)));
+        _setCompStrategy();
 
         // The Comp token strategy is at index 0 of the proposal validation strategies
         userPropositionPowerStrategies.push(IndexedStrategy(0, new bytes(0)));
@@ -47,8 +45,8 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
                 NO_UPDATE_STRING,
                 NO_UPDATE_STRING,
                 Strategy(
-                    address(new PropositionPowerProposalValidationStrategy()),
-                    abi.encode(threshold, strategies, maxBlockAge)
+                    address(new PropositionPowerAndActiveProposalsLimiterValidationStrategy()),
+                    abi.encode(cooldown, maxActiveProposals, threshold, strategies, maxBlockAge)
                 ),
                 "",
                 NO_UPDATE_ADDRESSES,
@@ -58,6 +56,12 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
                 NO_UPDATE_UINT8S
             )
         );
+    }
+
+    function _setCompStrategy() internal {
+        Strategy[] memory strategies = new Strategy[](1);
+        strategies[0] = compVotingStrategy;
+        _setPropositionPowerStrategies(proposalThreshold, strategies);
     }
 
     function _propose(uint256 blockNumber) internal {
@@ -70,6 +74,23 @@ contract PropositionPowerProposalValidationTest is SpaceTest {
     }
 
     function testPropose() public {
+        _propose(vm.getBlockNumber());
+    }
+
+    function testProposeWithoutCooldown() public {
+        _propose(vm.getBlockNumber());
+        _propose(vm.getBlockNumber());
+        _propose(vm.getBlockNumber());
+    }
+
+    function testProposeCooldown() public {
+        cooldown = 1 days;
+        _setCompStrategy();
+
+        _propose(vm.getBlockNumber());
+        vm.expectRevert(FailedToPassProposalValidation.selector);
+        _propose(vm.getBlockNumber());
+        vm.warp(vm.getBlockTimestamp() + 1 days);
         _propose(vm.getBlockNumber());
     }
 
